@@ -1,0 +1,20 @@
+Package: OnlineVisitAssessment
+Title: To assess the effectiveness of online visit on booking metrics
+Version: 0.1
+Authors@R:
+  person(given = "Gary Nguyen",
+         role = c("aut", "cre"),
+         email = "gary.hnguyen.1107@gmail.com")
+Description: This repo contains codes to assess the effectiveness of online visit on booking metrics.
+License: MIT + file LICENSE
+Imports:
+  dplyr,
+  tictoc,
+  readr,
+  glue,
+  here
+Encoding: UTF-8
+Language: en-US
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.2
