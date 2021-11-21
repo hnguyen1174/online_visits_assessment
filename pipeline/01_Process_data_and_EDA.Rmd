@@ -1,5 +1,6 @@
 ---
 title: "Process Data and EDA"
+author: "Gary Nguyen"
 ---
 
 ## 1. Load Libraries
@@ -94,7 +95,7 @@ property_NV <- property %>%
   filter(location == 'Vegas, Nevada')
 ```
 
-## 3. Exploratory Data Analysis
+## 3. Exploratory Data Analysis - Properties
 
 ### 3.1. Number of Properties by Location and Online Visit Status
 
@@ -363,6 +364,229 @@ print(p)
 ggsave(file.path(here::here(), 'fig/05B_number_prop_by_type_by_loc.png'), p, width = 8, height = 4, dpi = 300)
 ```
 
+## 4. Exploratory Data Analysis - Metrics
 
+### 4.1. No Location (Aggregated)
 
+```{r metrics_by_months}
+metrics_by_months <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(year_month = as.yearmon(date)) %>% 
+  group_by(date, online_visits) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup()
+```
 
+```{r booking_amount_per_prop_nolo}
+p <- metrics_by_months %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = booking_amount_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Booking Amount ($) Per Property') +
+  ggtitle('Average Booking Amount Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc()
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06A_booking_amount_per_prop_nolo.png'), p)
+```
+
+```{r bookings_per_prop_nolo}
+p <- metrics_by_months %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = bookings_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Booking Per Property') +
+  ggtitle('Average Booking Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc()
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06B_bookings_per_prop_nolo.png'), p)
+```
+
+```{r bookings_requests_per_prop_nolo}
+p <- metrics_by_months %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = booking_requests_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Booking Requests Per Property') +
+  ggtitle('Average Booking Requests Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc()
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06C_booking_requests_per_prop_nolo.png'), p)
+```
+
+```{r page_views_per_visit_per_prop_nolo}
+p <- metrics_by_months %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = property_page_views_per_visit_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Page Views Per Visit Per Property') +
+  ggtitle('Average Page Views Per Visit Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc()
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06D_page_views_per_visit_per_prop_nolo.png'), p)
+```
+
+```{r displays_in_searchpage_per_prop_nolo}
+p <- metrics_by_months %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = displays_in_searchpage_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Displays in Search Page Per Property') +
+  ggtitle('Average Displays in Search Page Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc()
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06E_displays_in_searchpage_per_prop_nolo.png'), p)
+```
+
+### 4.2. By Location
+
+```{r trend_location}
+metrics_by_months_by_loc <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(year_month = as.yearmon(date)) %>% 
+  group_by(date, online_visits, location) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup()
+```
+
+```{r booking_amount_per_prop_by_loc}
+p <- metrics_by_months_by_loc %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = booking_amount_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Booking Amount ($) Per Property') +
+  ggtitle('Average Booking Amount Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc() +
+  facet_wrap(~location, nrow = 3) 
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06A_booking_amount_per_prop_byloc.png'), p, height = 7, width = 5, dpi = 300)
+```
+
+```{r bookings_per_prop_byloc}
+p <- metrics_by_months_by_loc %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = bookings_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Booking Per Property') +
+  ggtitle('Average Booking Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc() +
+  facet_wrap(~location, nrow = 3) 
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06B_bookings_per_prop_byloc.png'), p, height = 7, width = 5, dpi = 300)
+```
+
+```{r bookings_requests_per_prop_byloc}
+p <- metrics_by_months_by_loc %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = booking_requests_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Booking Requests Per Property') +
+  ggtitle('Average Booking Requests Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc() +
+  facet_wrap(~location, nrow = 3) 
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06C_booking_requests_per_prop_byloc.png'), p, height = 7, width = 5, dpi = 300)
+```
+
+```{r page_views_per_visit_per_prop_byloc}
+p <- metrics_by_months_by_loc %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = property_page_views_per_visit_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Page Views Per Visit Per Property') +
+  ggtitle('Average Page Views Per Visit Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc() +
+  facet_wrap(~location, nrow = 3) 
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06D_page_views_per_visit_per_prop_byloc.png'), p, height = 7, width = 5, dpi = 300)
+```
+
+```{r displays_in_searchpage_per_prop_byloc}
+p <- metrics_by_months_by_loc %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = date, y = displays_in_searchpage_per_prop, color = `Online Visits`)) +
+  geom_line() +
+  geom_smooth(method = 'loess', se = FALSE) +
+  xlab('Month') +
+  ylab('Average Displays in Search Page Per Property') +
+  ggtitle('Average Displays in Search Page Per Property by Month') +
+  geom_vline(xintercept = as.Date('2019-01-01'), 
+             linetype = 'longdash', 
+             color = 'black', 
+             size = 0.3) +
+  theme_hc() +
+  facet_wrap(~location, nrow = 3) 
+
+print(p)
+ggsave(file.path(here::here(), 'fig/06E_displays_in_searchpage_per_prop_byloc.png'), p, height = 7, width = 5, dpi = 300)
+```
