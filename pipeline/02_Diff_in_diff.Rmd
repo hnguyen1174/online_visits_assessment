@@ -1,0 +1,197 @@
+---
+title: "Difference in Difference"
+author: "Gary Nguyen"
+---
+
+## 1. Load Libraries
+
+```{r load_library}
+library(tidyverse)
+library(here)
+library(lubridate)
+library(janitor)
+library(zoo)
+library(ggthemes)
+
+library(forecast)
+library(stargazer)
+library(data.table)
+library(tableone)
+library(lattice)
+library(pwr)
+library(rcompanion)
+library(scales)
+library(plm)
+library(readxl)
+library(MatchIt)
+library(lfe)
+library(Synth)
+library(gsynth)
+library(panelView)
+library(CausalImpact)
+```
+
+```{r devtools_loadall}
+devtools::load_all()
+```
+
+## 2. Load and Process Data
+
+```{r load_data}
+metrics <- readr::read_csv(file.path(here::here(), 'data/data.csv'))
+property <- readr::read_csv(file.path(here::here(), 'data/property_info.csv'))
+```
+
+```{r process_data}
+metrics <- metrics %>% 
+  clean_names() %>% 
+  replace(is.na(.), 0)
+
+property <- property %>% 
+  clean_names() %>% 
+  dplyr::rename(online_visits = virtual_reality_launched) %>% 
+  mutate(avg_review_rating_num = case_when(
+    avg_review_rating == "< 2.5" ~ (0 + 2.5)/2,
+    avg_review_rating == "2.5 - 3" ~ (2.5 + 3)/2,
+    avg_review_rating == "3.1 - 3.5" ~ (3.1 + 3.5)/2,
+    avg_review_rating == "3.6 - 4" ~ (3.6 + 4)/2,
+    avg_review_rating == "4.1 - 4.25" ~ (4.1 + 4.25)/2,
+    avg_review_rating == "4.26 - 4.50" ~ (4.26 + 4.5)/2,
+    avg_review_rating == "4.51 - 4.75" ~ (4.51 + 4.75)/2,
+    avg_review_rating == "4.76+" ~ (4.76 + 5)/2,
+    avg_review_rating == "No Reviews" ~ 0 
+  )) %>% 
+  mutate(number_of_reviews_on_the_property_num = case_when(
+    number_of_reviews_on_the_property == "20+"  ~ 20,
+    number_of_reviews_on_the_property == "6 to 11" ~ (6 + 11)/2,
+    number_of_reviews_on_the_property == "5" ~ 5, 
+    number_of_reviews_on_the_property == "12 to 19" ~ (12 + 19)/2,
+    number_of_reviews_on_the_property == "4" ~ 4,
+    number_of_reviews_on_the_property == "2" ~ 2,
+    number_of_reviews_on_the_property == "0" ~ 0,
+    number_of_reviews_on_the_property == "3" ~ 3,
+    number_of_reviews_on_the_property == "1" ~ 1
+  )) %>% 
+  mutate(treat = if_else(online_visits == 'Yes', 1, 0))
+
+common_property_id <- intersect(
+  property %>% pull(property_id) %>% unique(),
+  metrics %>% pull(property_id) %>% unique()
+  )
+
+property <- property %>% 
+  filter(property_id %in% c(common_property_id))
+
+property_metrics <- metrics %>% 
+  left_join(property, by = 'property_id') 
+
+property_FL <- property %>% 
+  filter(location == 'Destin, Florida')
+
+property_TX <- property %>% 
+  filter(location == 'Austin, Texas')
+
+property_NV <- property %>% 
+  filter(location == 'Vegas, Nevada')
+```
+
+## 3. Difference in Difference
+
+```{r to_test}
+to_test <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(post = if_else(date >= as.Date('2019-01-01'), 1, 0)) %>% 
+  dplyr::select(
+    property_id, 
+    avg_review_rating_num, 
+    number_of_reviews_on_the_property_num,
+    instant_booking_enabled,
+    premier_partner_badge, 
+    maximum_occupancy,
+    bedrooms,
+    bathrooms,
+    post,
+    treat,
+    bookings, 
+    booking_amount, 
+    booking_requests,
+    number_of_times_the_property_got_displayed_in_search_page,
+    number_of_photos_of_the_property_on_the_property_page,
+    property_page_views_visits
+  ) %>% 
+  mutate_all(as.numeric)
+```
+
+Statistically significant features for `bookings`:
+
+* `premier_partner_badge` (-0.003)
+* `bathrooms` (-0.001)
+* `post` (0.029)
+* `post:treat` (-0.007)
+
+```{r did_bookings}
+f_did <- lm(data = to_test, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+Statistically significant features for `booking_amount`:
+
+* `bedrooms` (3.189)
+* `bathrooms` (-3.887)
+* `post` (60.822)
+
+```{r did_booking_amount}
+f_did <- lm(data = to_test, 
+            booking_amount ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+Statistically significant features for `booking_requests`:
+
+* `premier_partner_badge` (-0.003)
+* `bathrooms` (-0.001)
+* `post` (0.029)
+* `post:treat` (-0.007)
+
+```{r did_booking_requests}
+f_did <- lm(data = to_test, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+Statistically significant features for `property_page_views_visits`:
+
+* `number_of_reviews_on_the_property_num` (+0.065)
+* `instant_booking_enabled` (+0.495)
+* `maximum_occupancy` (-0.096)
+* `bedrooms` (+0.555)
+* `bathrooms` (-0.284)
+* `number_of_photos_of_the_property_on_the_property_page` (-0.040)
+* `post` (+6.653)
+* `treat` (-0.890)
+* `post:treat` (-0.912)
+
+```{r did_property_page_views_visits}
+# bookings
+# booking_amount
+# booking_requests
+# number_of_times_the_property_got_displayed_in_search_page
+# property_page_views_visits
+
+f_did <- lm(data = to_test, 
+            property_page_views_visits ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+```{r did_number_of_times_the_property_got_displayed_in_search_page}
+# bookings
+# booking_amount
+# booking_requests
+# number_of_times_the_property_got_displayed_in_search_page
+# property_page_views_visits
+
+f_did <- lm(data = to_test, 
+            number_of_times_the_property_got_displayed_in_search_page ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```

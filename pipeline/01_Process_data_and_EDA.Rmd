@@ -478,7 +478,7 @@ ggsave(file.path(here::here(), 'fig/06E_displays_in_searchpage_per_prop_nolo.png
 
 ### 4.2. By Location
 
-```{r trend_location}
+```{r metrics_by_months_by_loc}
 metrics_by_months_by_loc <- metrics %>% 
   left_join(property, by = 'property_id') %>% 
   mutate(year_month = as.yearmon(date)) %>% 
