@@ -44,7 +44,22 @@ devtools::load_all()
 c(metrics, property) %<-% get_property_data()
 ```
 
-## 3. Matching - No Location
+## 3. Matching - Aggregated Data
+
+Features to match (these are the features that can potentially explain why a property was chosen for the online visit option):
+* `avg_review_rating_num`: average rating of the property
+* `number_of_reviews_on_the_property_num`: number of reviews a property has
+* `instant_booking_enabled`: whether a property has the instant booking feature enabled
+* `premier_partner_badge`: whether a property is from a premier partner
+* `maximum_occupancy`: maximum occupancy of the property
+* `bedrooms`: number of bedrooms
+* `bathrooms`: number of bathrooms
+* `number_of_photos_of_the_property_on_the_property_page`: number of photos on the property's page
+* `bookings_per_day`: number of bookings per day (before 2019-01-01)
+* `booking_amount_per_day`: amount of booking dollar per day (before 2019-01-01)
+* `booking_requests_per_day`: number of booking request per day (before 2019-01-01)
+* `property_page_views_per_visit_per_day`: number of page views per visit per day (before 2019-01-01)
+* `displays_in_searchpage_per_day`: number of times the property got displayed in the search page (before 2019-01-01)
 
 ```{r metrics_agg}
 metrics_agg <- metrics %>% 
@@ -58,7 +73,7 @@ metrics_agg <- metrics %>%
   ungroup()
 ```
 
-```{r}
+```{r property_to_match}
 property_to_match <- property %>% 
   left_join(metrics_agg, by = 'property_id') %>% 
   dplyr::select(
@@ -83,7 +98,14 @@ property_to_match <- property %>%
   mutate_at(vars(-location), as.numeric)
 ```
 
-```{r}
+Visualizing common support between the online visit group and non-online visit group:
+
+Logistic regression model (only two features are statistically significant):
+* `avg_review_rating_num`: average ratings
+* `property_page_views_per_visit_per_day`: number of page views per visit per day (before 2019-01-01)
+
+
+```{r propensity_model}
 propensity_model <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                   family = 'binomial',
                   data = property_to_match)
@@ -91,36 +113,31 @@ propensity_model <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the
 summary(propensity_model)
 ```
 
-```{r}
-propensity_score <- predict(propensity_model, type = 'response')
-propensity_df <- data.frame(propensity_score = propensity_score, 
-                            treat = propensity_model$model$treat) %>% 
-  as_tibble()
+```{r visualize_common_support} 
+visualize_common_support(propensity_model)
 ```
 
-```{r}
-propensity_df %>% 
-  mutate(treat = as.character(treat)) %>% 
-  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
-  geom_density(alpha = 0.5) +
-  theme_hc()
-```
+Matching with optimal algorithm:
 
-```{r}
+```{r property_match} 
 property_match <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                           method = 'optimal', 
                           data = property_to_match,
                           replace = TRUE, 
+                          # Discard properties outside of common support region
                           discard = 'both')
+
 summary(property_match)
 ```
 
-```{r}
+```{r get_matched_data}
 property_matched <- match.data(property_match)
 dim(property_matched)
 ```
 
-```{r}
+Perform the t-test on variables selected for the propensity score matching procedure (the expectation is that they are not too different between the control and treatment group):
+
+```{r ttest}
 continuous_vars <- c('avg_review_rating_num', 
                      'number_of_reviews_on_the_property_num',
                      'instant_booking_enabled',
@@ -138,7 +155,7 @@ continuous_vars <- c('avg_review_rating_num',
 map(continuous_vars, vectorize_ttest_for_property, property_matched)
 ```
 
-```{r}
+```{r df_for_test} 
 df_for_test <- property_matched %>% 
   left_join(metrics, by = 'property_id') %>% 
   filter(date > as.Date('2018-12-31')) %>% 
@@ -151,7 +168,14 @@ df_for_test <- property_matched %>%
   ungroup()
 ```
 
-```{r}
+Result:
+* `bookings_per_prop`: stat sig (-0.0059)
+* `booking_amount_per_prop`: not stat sig
+* `booking_requests_per_prop`: stat sig (-0.0075)
+* `property_page_views_per_visit_per_prop`: (-1.27991)
+* `displays_in_searchpage_per_prop`: not stat sig
+
+```{r ttest_main_var}
 # bookings_per_prop
 # booking_amount_per_prop
 # booking_requests_per_prop
@@ -166,29 +190,20 @@ t.test(displays_in_searchpage_per_prop ~ treat, data = df_for_test,
 
 ### 4.1. Florida
 
-```{r}
+```{r property_to_match_FL} 
 property_to_match_FL <- property_to_match %>% 
   filter(location == 'Destin, Florida')
 ```
 
-```{r}
+```{r propensity_model}
 propensity_model_FL <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                   family = 'binomial',
                   data = property_to_match_FL)
 
-propensity_score_FL <- predict(propensity_model_FL, type = 'response')
-propensity_df_FL <- data.frame(propensity_score = propensity_score_FL, 
-                               treat = propensity_model_FL$model$treat) %>% 
-  as_tibble()
-
-propensity_df_FL %>% 
-  mutate(treat = as.character(treat)) %>% 
-  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
-  geom_density(alpha = 0.5) +
-  theme_hc()
+visualize_common_support(propensity_model_FL)
 ```
 
-```{r}
+```{r matching_FL}
 property_match_FL <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                           method = 'optimal', 
                           data = property_to_match_FL,
@@ -208,7 +223,14 @@ df_for_test_FL <- property_matched_FL %>%
   ungroup()
 ```
 
-```{r}
+Results for Florida:
+* `bookings_per_prop`: not stat sig
+* `booking_amount_per_prop`: not stat sig
+* `booking_requests_per_prop`: not stat sig
+* `property_page_views_per_visit_per_prop`: not stat sig
+* `displays_in_searchpage_per_prop`: not stat sig
+
+```{r result_FL}
 # bookings_per_prop
 # booking_amount_per_prop
 # booking_requests_per_prop
@@ -221,29 +243,20 @@ t.test(displays_in_searchpage_per_prop ~ treat, data = df_for_test_FL,
 
 ### 4.2. Nevada
 
-```{r}
+```{r property_to_match_NV}
 property_to_match_NV <- property_to_match %>% 
   filter(location == 'Vegas, Nevada')
 ```
 
-```{r}
+```{r propensity_model_NV}
 propensity_model_NV <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                   family = 'binomial',
                   data = property_to_match_NV)
 
-propensity_score_NV <- predict(propensity_model_NV, type = 'response')
-propensity_df_NV <- data.frame(propensity_score = propensity_score_NV, 
-                               treat = propensity_model_NV$model$treat) %>% 
-  as_tibble()
-
-propensity_df_NV %>% 
-  mutate(treat = as.character(treat)) %>% 
-  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
-  geom_density(alpha = 0.5) +
-  theme_hc()
+visualize_common_support(propensity_model_NV)
 ```
 
-```{r}
+```{r df_for_test_NV}
 property_match_NV <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                           method = 'optimal', 
                           data = property_to_match_NV,
@@ -263,7 +276,14 @@ df_for_test_NV <- property_matched_FL %>%
   ungroup()
 ```
 
-```{r}
+Results for Nevada:
+* `bookings_per_prop`: not stat sig
+* `booking_amount_per_prop`: not stat sig
+* `booking_requests_per_prop`: not stat sig
+* `property_page_views_per_visit_per_prop`: not stat sig
+* `displays_in_searchpage_per_prop`: not stat sig
+
+```{r result_NV}
 # bookings_per_prop
 # booking_amount_per_prop
 # booking_requests_per_prop
@@ -276,29 +296,20 @@ t.test(displays_in_searchpage_per_prop ~ treat, data = df_for_test_NV,
 
 ### 4.3. Texas
 
-```{r}
+```{r property_to_match_TX}
 property_to_match_TX <- property_to_match %>% 
   filter(location == 'Austin, Texas')
 ```
 
-```{r}
+```{r visualize_common_support_TX}
 propensity_model_TX <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                   family = 'binomial',
                   data = property_to_match_TX)
 
-propensity_score_TX <- predict(propensity_model_TX, type = 'response')
-propensity_df_TX <- data.frame(propensity_score = propensity_score_TX, 
-                               treat = propensity_model_TX$model$treat) %>% 
-  as_tibble()
-
-propensity_df_TX %>% 
-  mutate(treat = as.character(treat)) %>% 
-  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
-  geom_density(alpha = 0.5) +
-  theme_hc()
+visualize_common_support(propensity_model_TX)
 ```
 
-```{r}
+```{r df_for_test_TX}
 property_match_TX <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
                           method = 'optimal', 
                           data = property_to_match_TX,
@@ -318,7 +329,14 @@ df_for_test_TX <- property_matched_TX %>%
   ungroup()
 ```
 
-```{r}
+Results for Texas:
+* `bookings_per_prop`: stat sig (-0.00871577)
+* `booking_amount_per_prop`: not stat sig
+* `booking_requests_per_prop`: stat sig (-0.00996454)
+* `property_page_views_per_visit_per_prop`: not stat sig
+* `displays_in_searchpage_per_prop`: not stat sig
+
+```{r result_TX}
 # bookings_per_prop
 # booking_amount_per_prop
 # booking_requests_per_prop

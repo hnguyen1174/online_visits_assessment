@@ -3,3 +3,4 @@
 export(get_property_data)
 export(vectorize_propztest_for_property)
 export(vectorize_ttest_for_property)
+export(visualize_common_support)
