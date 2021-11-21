@@ -4,13 +4,13 @@
 \alias{vectorize_ttest_for_property}
 \title{Vectorize T-test for the Property data}
 \usage{
-vectorize_ttest_for_property(x)
+vectorize_ttest_for_property(x, property_df)
 }
 \arguments{
 \item{x}{features of the Property dataframe}
 }
 \value{
-vectorized t tests
+vectorized t-tests
 }
 \description{
 Vectorize T-test for the Property data
