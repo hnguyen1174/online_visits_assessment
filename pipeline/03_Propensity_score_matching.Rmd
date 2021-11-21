@@ -1,0 +1,371 @@
+---
+title: "Propensity Score Matching"
+author: "Gary Nguyen"
+---
+
+## 1. Load Libraries
+
+```{r load_library}
+library(tidyverse)
+library(here)
+library(lubridate)
+library(janitor)
+library(zoo)
+library(ggthemes)
+
+library(forecast)
+library(stargazer)
+library(data.table)
+library(tableone)
+library(lattice)
+library(pwr)
+library(rcompanion)
+library(scales)
+library(plm)
+library(readxl)
+library(MatchIt)
+library(lfe)
+library(Synth)
+library(gsynth)
+library(panelView)
+library(CausalImpact)
+```
+
+```{r devtools_loadall}
+devtools::load_all()
+```
+
+## 2. Load and Process Data
+
+```{r load_data}
+metrics <- readr::read_csv(file.path(here::here(), 'data/data.csv'))
+property <- readr::read_csv(file.path(here::here(), 'data/property_info.csv'))
+```
+
+```{r process_data}
+metrics <- metrics %>% 
+  clean_names() %>% 
+  replace(is.na(.), 0)
+
+property <- property %>% 
+  clean_names() %>% 
+  dplyr::rename(online_visits = virtual_reality_launched) %>% 
+  mutate(avg_review_rating_num = case_when(
+    avg_review_rating == "< 2.5" ~ (0 + 2.5)/2,
+    avg_review_rating == "2.5 - 3" ~ (2.5 + 3)/2,
+    avg_review_rating == "3.1 - 3.5" ~ (3.1 + 3.5)/2,
+    avg_review_rating == "3.6 - 4" ~ (3.6 + 4)/2,
+    avg_review_rating == "4.1 - 4.25" ~ (4.1 + 4.25)/2,
+    avg_review_rating == "4.26 - 4.50" ~ (4.26 + 4.5)/2,
+    avg_review_rating == "4.51 - 4.75" ~ (4.51 + 4.75)/2,
+    avg_review_rating == "4.76+" ~ (4.76 + 5)/2,
+    avg_review_rating == "No Reviews" ~ 0 
+  )) %>% 
+  mutate(number_of_reviews_on_the_property_num = case_when(
+    number_of_reviews_on_the_property == "20+"  ~ 20,
+    number_of_reviews_on_the_property == "6 to 11" ~ (6 + 11)/2,
+    number_of_reviews_on_the_property == "5" ~ 5, 
+    number_of_reviews_on_the_property == "12 to 19" ~ (12 + 19)/2,
+    number_of_reviews_on_the_property == "4" ~ 4,
+    number_of_reviews_on_the_property == "2" ~ 2,
+    number_of_reviews_on_the_property == "0" ~ 0,
+    number_of_reviews_on_the_property == "3" ~ 3,
+    number_of_reviews_on_the_property == "1" ~ 1
+  )) %>% 
+  mutate(treat = if_else(online_visits == 'Yes', 1, 0))
+
+common_property_id <- intersect(
+  property %>% pull(property_id) %>% unique(),
+  metrics %>% pull(property_id) %>% unique()
+  )
+
+property <- property %>% 
+  filter(property_id %in% c(common_property_id))
+```
+
+## 3. Matching - No Location
+
+```{r metrics_agg}
+metrics_agg <- metrics %>% 
+  filter(date < as.Date('2019-01-01')) %>% 
+  group_by(property_id) %>% 
+  summarize(bookings_per_day = mean(bookings, na.rm = TRUE),
+            booking_amount_per_day = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_day = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_day = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_day = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup()
+```
+
+```{r}
+property_to_match <- property %>% 
+  left_join(metrics_agg, by = 'property_id') %>% 
+  dplyr::select(
+    property_id, 
+    location,
+    avg_review_rating_num, 
+    number_of_reviews_on_the_property_num,
+    instant_booking_enabled,
+    premier_partner_badge, 
+    maximum_occupancy,
+    bedrooms,
+    bathrooms,
+    number_of_photos_of_the_property_on_the_property_page,
+    treat, 
+    bookings_per_day, 
+    booking_amount_per_day, 
+    booking_requests_per_day, 
+    property_page_views_per_visit_per_day,
+    displays_in_searchpage_per_day
+  ) %>% 
+  drop_na() %>% 
+  mutate_at(vars(-location), as.numeric)
+```
+
+```{r}
+propensity_model <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                  family = 'binomial',
+                  data = property_to_match)
+
+summary(propensity_model)
+```
+
+```{r}
+propensity_score <- predict(propensity_model, type = 'response')
+propensity_df <- data.frame(propensity_score = propensity_score, 
+                            treat = propensity_model$model$treat) %>% 
+  as_tibble()
+```
+
+```{r}
+propensity_df %>% 
+  mutate(treat = as.character(treat)) %>% 
+  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
+  geom_density(alpha = 0.5) +
+  theme_hc()
+```
+
+```{r}
+# library(optmatch)
+property_match <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                          method = 'optimal', 
+                          data = property_to_match,
+                          replace = TRUE, 
+                          discard = 'both')
+summary(property_match)
+```
+
+```{r}
+property_matched <- match.data(property_match)
+dim(property_matched)
+```
+
+```{r}
+continuous_vars <- c('avg_review_rating_num', 
+                     'number_of_reviews_on_the_property_num',
+                     'instant_booking_enabled',
+                     'premier_partner_badge', 
+                     'maximum_occupancy',
+                     'bedrooms',
+                     'bathrooms',
+                     'number_of_photos_of_the_property_on_the_property_page',
+                     'bookings_per_day', 
+                     'booking_amount_per_day', 
+                     'booking_requests_per_day', 
+                     'property_page_views_per_visit_per_day',
+                     'displays_in_searchpage_per_day')
+
+map(continuous_vars, vectorize_ttest_for_property, property_matched)
+```
+
+```{r}
+df_for_test <- property_matched %>% 
+  left_join(metrics, by = 'property_id') %>% 
+  filter(date > as.Date('2018-12-31')) %>% 
+  group_by(property_id, treat) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup()
+```
+
+```{r}
+# bookings_per_prop
+# booking_amount_per_prop
+# booking_requests_per_prop
+# property_page_views_per_visit_per_prop
+# displays_in_searchpage_per_prop
+
+t.test(displays_in_searchpage_per_prop ~ treat, data = df_for_test,
+       var.equal = FALSE, alternative = 'greater')
+```
+
+## 4. Matching - By Location
+
+### 4.1. Florida
+
+```{r}
+property_to_match_FL <- property_to_match %>% 
+  filter(location == 'Destin, Florida')
+```
+
+```{r}
+propensity_model_FL <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                  family = 'binomial',
+                  data = property_to_match_FL)
+
+propensity_score_FL <- predict(propensity_model_FL, type = 'response')
+propensity_df_FL <- data.frame(propensity_score = propensity_score_FL, 
+                               treat = propensity_model_FL$model$treat) %>% 
+  as_tibble()
+
+propensity_df_FL %>% 
+  mutate(treat = as.character(treat)) %>% 
+  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
+  geom_density(alpha = 0.5) +
+  theme_hc()
+```
+
+```{r}
+property_match_FL <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                          method = 'optimal', 
+                          data = property_to_match_FL,
+                          replace = TRUE, 
+                          discard = 'both')
+property_matched_FL <- match.data(property_match_FL)
+
+df_for_test_FL <- property_matched_FL %>% 
+  left_join(metrics, by = 'property_id') %>% 
+  filter(date > as.Date('2018-12-31')) %>% 
+  group_by(property_id, treat) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup()
+```
+
+```{r}
+# bookings_per_prop
+# booking_amount_per_prop
+# booking_requests_per_prop
+# property_page_views_per_visit_per_prop
+# displays_in_searchpage_per_prop
+
+t.test(displays_in_searchpage_per_prop ~ treat, data = df_for_test_FL,
+       var.equal = FALSE, alternative = 'greater')
+```
+
+### 4.2. Nevada
+
+```{r}
+property_to_match_NV <- property_to_match %>% 
+  filter(location == 'Vegas, Nevada')
+```
+
+```{r}
+propensity_model_NV <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                  family = 'binomial',
+                  data = property_to_match_NV)
+
+propensity_score_NV <- predict(propensity_model_NV, type = 'response')
+propensity_df_NV <- data.frame(propensity_score = propensity_score_NV, 
+                               treat = propensity_model_NV$model$treat) %>% 
+  as_tibble()
+
+propensity_df_NV %>% 
+  mutate(treat = as.character(treat)) %>% 
+  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
+  geom_density(alpha = 0.5) +
+  theme_hc()
+```
+
+```{r}
+property_match_NV <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                          method = 'optimal', 
+                          data = property_to_match_NV,
+                          replace = TRUE, 
+                          discard = 'both')
+property_matched_FL <- match.data(property_match_NV)
+
+df_for_test_NV <- property_matched_FL %>% 
+  left_join(metrics, by = 'property_id') %>% 
+  filter(date > as.Date('2018-12-31')) %>% 
+  group_by(property_id, treat) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup()
+```
+
+```{r}
+# bookings_per_prop
+# booking_amount_per_prop
+# booking_requests_per_prop
+# property_page_views_per_visit_per_prop
+# displays_in_searchpage_per_prop
+
+t.test(displays_in_searchpage_per_prop ~ treat, data = df_for_test_NV,
+       var.equal = FALSE, alternative = 'greater')
+```
+
+### 4.3. Texas
+
+```{r}
+property_to_match_TX <- property_to_match %>% 
+  filter(location == 'Austin, Texas')
+```
+
+```{r}
+propensity_model_TX <- glm(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                  family = 'binomial',
+                  data = property_to_match_TX)
+
+propensity_score_TX <- predict(propensity_model_TX, type = 'response')
+propensity_df_TX <- data.frame(propensity_score = propensity_score_TX, 
+                               treat = propensity_model_TX$model$treat) %>% 
+  as_tibble()
+
+propensity_df_TX %>% 
+  mutate(treat = as.character(treat)) %>% 
+  ggplot(aes(x = propensity_score, group = treat, fill = treat)) +
+  geom_density(alpha = 0.5) +
+  theme_hc()
+```
+
+```{r}
+property_match_TX <- matchit(treat ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + bookings_per_day + booking_amount_per_day + booking_requests_per_day + property_page_views_per_visit_per_day + displays_in_searchpage_per_day,
+                          method = 'optimal', 
+                          data = property_to_match_TX,
+                          replace = TRUE, 
+                          discard = 'both')
+property_matched_TX <- match.data(property_match_TX)
+
+df_for_test_TX <- property_matched_TX %>% 
+  left_join(metrics, by = 'property_id') %>% 
+  filter(date > as.Date('2018-12-31')) %>% 
+  group_by(property_id, treat) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup()
+```
+
+```{r}
+# bookings_per_prop
+# booking_amount_per_prop
+# booking_requests_per_prop
+# property_page_views_per_visit_per_prop
+# displays_in_searchpage_per_prop
+
+t.test(displays_in_searchpage_per_prop ~ treat, data = df_for_test_TX,
+       var.equal = FALSE, alternative = 'greater')
+```
+
