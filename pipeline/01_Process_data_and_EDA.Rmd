@@ -83,6 +83,15 @@ property <- property %>%
 
 property_metrics <- metrics %>% 
   left_join(property, by = 'property_id') 
+
+property_FL <- property %>% 
+  filter(location == 'Destin, Florida')
+
+property_TX <- property %>% 
+  filter(location == 'Austin, Texas')
+
+property_NV <- property %>% 
+  filter(location == 'Vegas, Nevada')
 ```
 
 ## 3. Exploratory Data Analysis
@@ -132,11 +141,51 @@ print(p)
 ggsave(file.path(here::here(), 'fig/02_avg_rating_review_by_tour.png'), p)
 ```
 
+```{r mean_ratings_and_number_of_ratings_by_loc, fig.width=4, fig.height=2}
+p <- property %>% 
+  group_by(location, online_visits) %>% 
+  summarize(mean_rating = mean(avg_review_rating_num),
+            mean_num_reviews = mean(number_of_reviews_on_the_property_num)) %>% 
+  ungroup() %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  gather(key = 'metrics', value = 'value', -`Online Visits`, -location) %>% 
+  mutate(metrics = if_else(metrics == 'mean_rating', "Average Rating", "Average Number of Rating")) %>% 
+  ggplot(aes(x = metrics, y = value, fill = `Online Visits`, label = round(value, 2))) +
+  geom_col(position = 'dodge') +
+  geom_text(position = position_dodge(width = 0.9), hjust = -0.15) +
+  xlab('Metrics') +
+  ylab('Value') +
+  theme_hc() +
+  ggtitle('Mean Ratings and Mean Number of Reviews by Online Visit Status') +
+  ylim(0, 20) +
+  coord_flip() +
+  facet_wrap(~location)
+
+print(p)
+ggsave(file.path(here::here(), 'fig/02B_avg_rating_review_by_tour_by_loc.png'), p, width = 8, height = 4, dpi = 300)
+```
+
 There is weak evidence that the properties in the online visit group has higher average ratings than the non-online visit group.
 
 ```{r ttest_ratings}
 continuous_vars <- c('avg_review_rating_num', 'number_of_reviews_on_the_property_num')
-map(continuous_vars, vectorize_ttest_for_property)
+map(continuous_vars, vectorize_ttest_for_property, property)
+```
+
+When breaking into specific locations:
+* There is weak evidence that the properties in the online visit group has higher average ratings than the non-online visit group in Texas.
+* There is weak evidence that the properties in the online visit group has lower average number of reviews than the non-online visit group in Nevada
+
+```{r ttest_ratings_by_loc}
+continuous_vars <- c('avg_review_rating_num', 'number_of_reviews_on_the_property_num')
+cat('================= FLORIDA ================= \n\n')
+map(continuous_vars, vectorize_ttest_for_property, property_FL)
+
+cat('================= TEXAS ================= \n\n')
+map(continuous_vars, vectorize_ttest_for_property, property_TX)
+
+cat('================= NEVADA ================= \n\n')
+map(continuous_vars, vectorize_ttest_for_property, property_NV)
 ```
 
 ### 3.3. Property Size by Online Visit Status
@@ -156,21 +205,58 @@ p <- property %>%
   xlab('Metrics') +
   ylab('Value') +
   theme_hc() +
-  ggtitle('Average Property Size by Virtual Tour') +
+  ggtitle('Average Property Size by Online Visit Option') +
   ylim(0, 10)
 
 print(p)
 ggsave(file.path(here::here(), 'fig/03_prop_size_by_online_visit.png'), p)
 ```
 
+```{r prop_size_by_online_visit_by_loc, fig.width=4, fig.height=2}
+p <- property %>% 
+  group_by(location, online_visits) %>% 
+  summarize(`Avg # of Bedrooms` = mean(bedrooms),
+            `Avg # of Bathrooms` = mean(bathrooms),
+            `Avg Maximum Occupancy` = mean(maximum_occupancy)) %>% 
+  ungroup() %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  gather(key = 'metrics', value = 'value', -`Online Visits`, -location) %>% 
+  ggplot(aes(x = metrics, y = value, fill = `Online Visits`, label = round(value, 2))) +
+  geom_col(position = 'dodge') +
+  geom_text(position = position_dodge(width = 0.9), hjust = -0.15) +
+  xlab('Metrics') +
+  ylab('Value') +
+  theme_hc() +
+  ggtitle('Average Property Size by Online Visit Option') +
+  ylim(0, 15) +
+  coord_flip() +
+  facet_wrap(~location)
+
+print(p)
+ggsave(file.path(here::here(), 'fig/03B_prop_size_by_online_visit_by_loc.png'), p, width = 8, height = 4, dpi = 300)
+```
+
 With p-values > 0.05, none of these variables are that different between the online visit group and non-online visit group.
 
 ```{r ttest_size}
 continuous_vars <- c('bedrooms', 'bathrooms', 'maximum_occupancy')
-map(continuous_vars, vectorize_ttest_for_property)
+map(continuous_vars, vectorize_ttest_for_property, property)
 ```
 
-### 3.4. 
+```{r ttest_size_by_loc}
+continuous_vars <- c('bedrooms', 'bathrooms', 'maximum_occupancy')
+
+cat('================= FLORIDA ================= \n\n')
+map(continuous_vars, vectorize_ttest_for_property, property_FL)
+
+cat('================= TEXAS ================= \n\n')
+map(continuous_vars, vectorize_ttest_for_property, property_TX)
+
+cat('================= NEVADA ================= \n\n')
+map(continuous_vars, vectorize_ttest_for_property, property_NV)
+```
+
+### 3.4. Comparisons: Instant bookings and premier partner badge
 
 ```{r IB_and PP_type_by_tour}
 p <- property %>% 
@@ -193,8 +279,89 @@ print(p)
 ggsave(file.path(here::here(), 'fig/04_IB_and PP_type_by_tour.png'), p)
 ```
 
+```{r IB_and PP_type_by_tour_by_loc, fig.width=4, fig.height=2}
+p <- property %>% 
+  group_by(location, online_visits) %>% 
+  summarize(instant_booking_enabled = mean(instant_booking_enabled),
+            premier_partner_badge = mean(premier_partner_badge)) %>% 
+  ungroup() %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  gather(key = 'metrics', value = 'value', -`Online Visits`, -location) %>% 
+  ggplot(aes(x = metrics, y = value, fill = `Online Visits`, label = scales::percent(value, 0.01))) +
+  geom_col(position = 'dodge') +
+  geom_text(position = position_dodge(width = 0.9), hjust = -0.15) +
+  xlab('Metrics') +
+  ylab('Value') +
+  theme_hc() +
+  ggtitle('Percentage of Properties with Instant Booking and Premier Partner Badge') +
+  ylim(0, 0.6) +
+  coord_flip() +
+  facet_wrap(~location)
 
+print(p)
+ggsave(file.path(here::here(), 'fig/04B_IB_and PP_type_by_tour_by_loc.png'), p, width = 10, height = 4, dpi = 300)
+```
 
+With p-values > 0.05, instant_booking_enabled and premier_partner_badge are that different between the online visit group and non-online visit group.
+
+```{r proptest_size}
+indicator_vars <- c('instant_booking_enabled', 'premier_partner_badge')
+map(indicator_vars, vectorize_propztest_for_property, property)
+```
+
+There is weak evidence (p-value < 0.1) that there are more more properties with instant booking enabled with the online visit option than without the non-online visit option in Texas.
+
+```{r proptest_size_by_loc}
+indicator_vars <- c('instant_booking_enabled', 'premier_partner_badge')
+
+cat('================= FLORIDA ================= \n\n')
+map(indicator_vars, vectorize_propztest_for_property, property_FL)
+
+cat('================= TEXAS ================= \n\n')
+map(indicator_vars, vectorize_propztest_for_property, property_TX)
+
+cat('================= NEVADA ================= \n\n')
+map(indicator_vars, vectorize_propztest_for_property, property_NV)
+```
+
+### 3.5. Number of Property Types by Online Visit Option
+
+```{r number_prop_by_type}
+p <- property %>% 
+  group_by(property_type, online_visits) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = reorder(property_type, n), y = n, fill = `Online Visits`)) +
+  geom_col(position = 'dodge') +
+  coord_flip() +
+  theme_hc() +
+  ylab('Number of Property') +
+  xlab('Type') +
+  ggtitle('Number of Property by Type by Online Visit Option')
+
+print(p)
+ggsave(file.path(here::here(), 'fig/05_number_prop_by_type.png'), p)
+```
+
+```{r number_prop_by_type_by_loc, fig.width=4, fig.height=2}
+p <- property %>% 
+  group_by(location, property_type, online_visits) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  dplyr::rename(`Online Visits` = online_visits) %>% 
+  ggplot(aes(x = reorder(property_type, n), y = n, fill = `Online Visits`)) +
+  geom_col(position = 'dodge') +
+  coord_flip() +
+  theme_hc() +
+  ylab('Number of Property') +
+  xlab('Type') +
+  ggtitle('Number of Property by Type by Online Visit Option') +
+  facet_wrap(~location)
+
+print(p)
+ggsave(file.path(here::here(), 'fig/05B_number_prop_by_type_by_loc.png'), p, width = 8, height = 4, dpi = 300)
+```
 
 
 
