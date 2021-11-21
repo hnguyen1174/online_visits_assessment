@@ -102,6 +102,7 @@ to_test <- metrics %>%
   left_join(property, by = 'property_id') %>% 
   mutate(post = if_else(date >= as.Date('2019-01-01'), 1, 0)) %>% 
   dplyr::select(
+    location,
     property_id, 
     avg_review_rating_num, 
     number_of_reviews_on_the_property_num,
@@ -119,7 +120,7 @@ to_test <- metrics %>%
     number_of_photos_of_the_property_on_the_property_page,
     property_page_views_visits
   ) %>% 
-  mutate_all(as.numeric)
+  mutate_at(vars(-location), as.numeric)
 ```
 
 Statistically significant features for `bookings`:
@@ -173,25 +174,167 @@ Statistically significant features for `property_page_views_visits`:
 * `post:treat` (-0.912)
 
 ```{r did_property_page_views_visits}
-# bookings
-# booking_amount
-# booking_requests
-# number_of_times_the_property_got_displayed_in_search_page
-# property_page_views_visits
-
 f_did <- lm(data = to_test, 
             property_page_views_visits ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
 stargazer(f_did, type = 'text', report = ('vc*p'))
 ```
 
-```{r did_number_of_times_the_property_got_displayed_in_search_page}
-# bookings
-# booking_amount
-# booking_requests
-# number_of_times_the_property_got_displayed_in_search_page
-# property_page_views_visits
+Statistically significant features for `number_of_times_the_property_got_displayed_in_search_page`:
 
+* `avg_review_rating_num` (-3.984)
+* `instant_booking_enabled` (+7.821)
+* `premier_partner_badge` (-16.552)
+* `maximum_occupancy` (+2.892)
+* `bathrooms` (-7.118)
+* `number_of_photos_of_the_property_on_the_property_page` (-0.583)
+* `post` (+154.775)
+
+```{r did_number_of_times_the_property_got_displayed_in_search_page}
 f_did <- lm(data = to_test, 
+            number_of_times_the_property_got_displayed_in_search_page ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+## 4. Difference in Difference - TEXAS
+
+```{r to_test_TX}
+to_test_TX <- to_test %>% 
+  filter(location == 'Austin, Texas')
+```
+
+`post:treat` for `booking_requests` is statistically significant (-0.009).
+
+```{r did_bookings_TX}
+f_did <- lm(data = to_test_TX, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `booking_amount` is not statistically significant.
+
+```{r did_booking_amount_TX}
+f_did <- lm(data = to_test_TX, 
+            booking_amount ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `booking_requests` is statistically significant (-0.009).
+
+```{r did_booking_requests_TX}
+f_did <- lm(data = to_test_TX, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `property_page_views_visits` is not statistically significant.
+
+```{r did_property_page_views_visits_TX}
+f_did <- lm(data = to_test_TX, 
+            property_page_views_visits ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `number_of_times_the_property_got_displayed_in_search_page` is not statistically significant.
+
+```{r did_number_of_times_the_property_got_displayed_in_search_page_TX}
+f_did <- lm(data = to_test_TX, 
+            number_of_times_the_property_got_displayed_in_search_page ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+## 5. Difference in Difference - FLORIDA
+
+```{r to_test_FL}
+to_test_FL <- to_test %>% 
+  filter(location == 'Destin, Florida')
+```
+
+`post:treat` for `booking_requests` is statistically significant (-0.006).
+
+```{r did_bookings_FL}
+f_did <- lm(data = to_test_FL, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `booking_amount` is not statistically significant.
+
+```{r did_booking_amount_FL}
+f_did <- lm(data = to_test_FL, 
+            booking_amount ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `booking_requests` is statistically significant (-0.006).
+
+```{r did_booking_requests_FL}
+f_did <- lm(data = to_test_FL, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `property_page_views_visits` is not statistically significant.
+
+```{r did_property_page_views_visits_FL}
+f_did <- lm(data = to_test_FL, 
+            property_page_views_visits ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `number_of_times_the_property_got_displayed_in_search_page` is not statistically significant.
+
+```{r did_number_of_times_the_property_got_displayed_in_search_page_FL}
+f_did <- lm(data = to_test_FL, 
+            number_of_times_the_property_got_displayed_in_search_page ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+## 6. Difference in Difference - NEVADA
+
+```{r to_test_NV}
+to_test_NV <- to_test %>% 
+  filter(location == 'Vegas, Nevada')
+```
+
+`post:treat` for `booking_requests` is not statistically significant.
+
+```{r did_bookings_NV}
+f_did <- lm(data = to_test_NV, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `booking_amount` is not statistically significant.
+
+```{r did_booking_amount_NV}
+f_did <- lm(data = to_test_NV, 
+            booking_amount ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `booking_requests` is not statistically significant.
+
+```{r did_booking_requests_NV}
+f_did <- lm(data = to_test_NV, 
+            booking_requests ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `property_page_views_visits` is statistically significant (-1.063).
+
+```{r did_property_page_views_visits_NV}
+f_did <- lm(data = to_test_NV, 
+            property_page_views_visits ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
+stargazer(f_did, type = 'text', report = ('vc*p'))
+```
+
+`post:treat` for `number_of_times_the_property_got_displayed_in_search_page` is statistically significant (-16.716).
+
+```{r did_number_of_times_the_property_got_displayed_in_search_page_NV}
+f_did <- lm(data = to_test_NV, 
             number_of_times_the_property_got_displayed_in_search_page ~ avg_review_rating_num + number_of_reviews_on_the_property_num + instant_booking_enabled + premier_partner_badge + maximum_occupancy + bedrooms + bathrooms + number_of_photos_of_the_property_on_the_property_page + post + treat + post*treat)
 stargazer(f_did, type = 'text', report = ('vc*p'))
 ```
