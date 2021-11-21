@@ -1,0 +1,250 @@
+---
+title: "Propensity Score Matching"
+author: "Gary Nguyen"
+---
+
+In this notebook, I performed statistical tests as if the dataset was generated from a randomized controlled experiment (such as an AB Test).
+
+## 1. Load Libraries
+
+```{r load_library}
+library(tidyverse)
+library(here)
+library(lubridate)
+library(janitor)
+library(zoo)
+library(ggthemes)
+
+library(forecast)
+library(stargazer)
+library(data.table)
+library(tableone)
+library(lattice)
+library(pwr)
+library(rcompanion)
+library(scales)
+library(plm)
+library(readxl)
+library(MatchIt)
+library(lfe)
+library(Synth)
+library(gsynth)
+library(panelView)
+library(CausalImpact)
+library(optmatch)
+
+library(zeallot)
+```
+
+```{r devtools_loadall}
+devtools::load_all()
+```
+
+## 2. Load and Process Data
+
+```{r load_data}
+c(metrics, property) %<-% get_property_data()
+```
+
+## 3. T-test (aggregated)
+
+```{r control_ids}
+control_ids <- property %>% 
+  filter(treat == 0) %>% 
+  pull(property_id) %>% 
+  unique()
+```
+
+```{r resample}
+df_for_test <- metrics %>% 
+  mutate(treatment = if_else(property_id %in% control_ids, 0, 1)) %>% 
+  mutate(post = if_else(date < as.Date('2019-01-01'), 'Pre', 'Post')) %>% 
+  group_by(property_id, post, treatment) %>% 
+  summarize(avg_bookings = mean(bookings),
+            avg_booking_amount = mean(booking_amount),
+            avg_booking_requests = mean(booking_requests),
+            avg_property_page_views_per_visit = mean(property_page_views_visits),
+            avg_displays_per_searchpage = mean(number_of_times_the_property_got_displayed_in_search_page)) %>% 
+  ungroup() %>% 
+  filter(post == 'Post')
+
+# 690
+control <- df_for_test %>% 
+  filter(treatment == 0)
+
+# 1294
+treatment <- df_for_test %>% 
+  filter(treatment == 1) %>% 
+  sample_n(nrow(control))
+
+df_for_test_resample <- control %>% 
+  bind_rows(treatment)
+```
+
+Results:
+* `avg_bookings`: not stat sig
+* `avg_booking_amount`: not stat sig
+* `avg_booking_requests`: stat sig (-0.00500467)
+* `avg_property_page_views_per_visit`: stat sig (-1.85892)
+* `avg_displays_per_searchpage`: not stat sig
+
+```{r ttest}
+# avg_bookings
+# avg_booking_amount
+# avg_booking_requests
+# avg_property_page_views_per_visit
+# avg_displays_per_searchpage
+
+t.test(avg_displays_per_searchpage ~ treatment, 
+       data = df_for_test_resample,
+       var.equal = FALSE, 
+       alternative = 'greater')
+```
+
+## 3. T-test (by location)
+
+### 3.1. Texas
+
+```{r resample_TX}
+df_for_test <- metrics %>% 
+  left_join(dplyr::select(property, property_id, location)) %>% 
+  mutate(treatment = if_else(property_id %in% control_ids, 0, 1)) %>% 
+  mutate(post = if_else(date < as.Date('2019-01-01'), 'Pre', 'Post')) %>% 
+  group_by(property_id, location, post, treatment) %>% 
+  summarize(avg_bookings = mean(bookings),
+            avg_booking_amount = mean(booking_amount),
+            avg_booking_requests = mean(booking_requests),
+            avg_property_page_views_per_visit = mean(property_page_views_visits),
+            avg_displays_per_searchpage = mean(number_of_times_the_property_got_displayed_in_search_page)) %>% 
+  ungroup() %>% 
+  filter(post == 'Post') %>% 
+  filter(location == 'Austin, Texas')
+
+control <- df_for_test %>% 
+  filter(treatment == 0)
+
+treatment <- df_for_test %>% 
+  filter(treatment == 1) %>% 
+  sample_n(nrow(control))
+
+df_for_test_resample <- control %>% 
+  bind_rows(treatment)
+```
+
+Results for Texas:
+* `avg_bookings`: stat sig (-0.00898518)
+* `avg_booking_amount`: not stat sig
+* `avg_booking_requests`: stat sig (-0.01073499)
+* `avg_property_page_views_per_visit`: not stat sig
+* `avg_displays_per_searchpage`: not stat sig
+
+```{r ttest_TX}
+# avg_bookings
+# avg_booking_amount
+# avg_booking_requests
+# avg_property_page_views_per_visit
+# avg_displays_per_searchpage
+
+t.test(avg_displays_per_searchpage ~ treatment, 
+       data = df_for_test_resample,
+       var.equal = FALSE, 
+       alternative = 'greater')
+```
+
+### 3.2. Nevada
+
+```{r resample_NV}
+df_for_test <- metrics %>% 
+  left_join(dplyr::select(property, property_id, location)) %>% 
+  mutate(treatment = if_else(property_id %in% control_ids, 0, 1)) %>% 
+  mutate(post = if_else(date < as.Date('2019-01-01'), 'Pre', 'Post')) %>% 
+  group_by(property_id, location, post, treatment) %>% 
+  summarize(avg_bookings = mean(bookings),
+            avg_booking_amount = mean(booking_amount),
+            avg_booking_requests = mean(booking_requests),
+            avg_property_page_views_per_visit = mean(property_page_views_visits),
+            avg_displays_per_searchpage = mean(number_of_times_the_property_got_displayed_in_search_page)) %>% 
+  ungroup() %>% 
+  filter(post == 'Post') %>% 
+  filter(location == 'Vegas, Nevada')
+
+control <- df_for_test %>% 
+  filter(treatment == 0)
+
+treatment <- df_for_test %>% 
+  filter(treatment == 1) %>% 
+  sample_n(nrow(control))
+
+df_for_test_resample <- control %>% 
+  bind_rows(treatment)
+```
+
+Results for Vegas:
+* `avg_bookings`: not stat sig
+* `avg_booking_amount`: weak stat sig (-25.36331)
+* `avg_booking_requests`: weak stat sig (-0.00977751)
+* `avg_property_page_views_per_visit`: not stat sig
+* `avg_displays_per_searchpage`: not stat sig
+
+```{r ttest_NV}
+# avg_bookings
+# avg_booking_amount
+# avg_booking_requests
+# avg_property_page_views_per_visit
+# avg_displays_per_searchpage
+
+t.test(avg_displays_per_searchpage ~ treatment, 
+       data = df_for_test_resample,
+       var.equal = FALSE, 
+       alternative = 'greater')
+```
+
+### 3.3. Florida
+
+```{r resample_FL}
+df_for_test <- metrics %>% 
+  left_join(dplyr::select(property, property_id, location)) %>% 
+  mutate(treatment = if_else(property_id %in% control_ids, 0, 1)) %>% 
+  mutate(post = if_else(date < as.Date('2019-01-01'), 'Pre', 'Post')) %>% 
+  group_by(property_id, location, post, treatment) %>% 
+  summarize(avg_bookings = mean(bookings),
+            avg_booking_amount = mean(booking_amount),
+            avg_booking_requests = mean(booking_requests),
+            avg_property_page_views_per_visit = mean(property_page_views_visits),
+            avg_displays_per_searchpage = mean(number_of_times_the_property_got_displayed_in_search_page)) %>% 
+  ungroup() %>% 
+  filter(post == 'Post') %>% 
+  filter(location == 'Destin, Florida')
+
+control <- df_for_test %>% 
+  filter(treatment == 0)
+
+treatment <- df_for_test %>% 
+  filter(treatment == 1) %>% 
+  sample_n(nrow(control))
+
+df_for_test_resample <- control %>% 
+  bind_rows(treatment)
+```
+
+Results for Florida:
+* `avg_bookings`: not stat sig
+* `avg_booking_amount`: not stat sig
+* `avg_booking_requests`: not stat sig
+* `avg_property_page_views_per_visit`: not stat sig
+* `avg_displays_per_searchpage`: not stat sig
+
+```{r ttest_NV}
+# avg_bookings
+# avg_booking_amount
+# avg_booking_requests
+# avg_property_page_views_per_visit
+# avg_displays_per_searchpage
+
+t.test(avg_displays_per_searchpage ~ treatment, 
+       data = df_for_test_resample,
+       var.equal = FALSE, 
+       alternative = 'greater')
+```
+
+
