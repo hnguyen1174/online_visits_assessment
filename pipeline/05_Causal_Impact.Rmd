@@ -1,0 +1,162 @@
+---
+title: "Causal Impact"
+author: "Gary Nguyen"
+---
+
+## 1. Load Libraries
+
+```{r load_library}
+library(tidyverse)
+library(here)
+library(lubridate)
+library(janitor)
+library(zoo)
+library(ggthemes)
+
+library(forecast)
+library(stargazer)
+library(data.table)
+library(tableone)
+library(lattice)
+library(pwr)
+library(rcompanion)
+library(scales)
+library(plm)
+library(readxl)
+library(MatchIt)
+library(lfe)
+library(Synth)
+library(gsynth)
+library(panelView)
+library(CausalImpact)
+library(optmatch)
+
+library(zeallot)
+```
+
+```{r devtools_loadall}
+devtools::load_all()
+```
+
+## 2. Load and Process Data
+
+```{r load_data}
+c(metrics, property) %<-% get_property_data()
+```
+
+Results:
+* `bookings_per_prop`: +0.011 or +33%
+* `booking_amount_per_prop`: +33 or +43%
+* `booking_requests_per_prop`: +0.011 or +32%
+* `property_page_views_per_visit_per_prop`: +1.6 or +16%
+* `displays_in_searchpage_per_prop`: not stat sig
+
+```{r bookings_per_prop_by_months}
+bookings_per_prop_by_months <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(year_month = as.yearmon(date)) %>% 
+  group_by(date, online_visits) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(post = if_else(date >= as.Date('2019-01-01'), 1, 0)) %>% 
+  dplyr::select(date, online_visits, bookings_per_prop) %>% 
+  spread(online_visits, bookings_per_prop) %>% 
+  dplyr::select(date, Yes, No)
+
+pre.period <- as.Date(c('2018-11-02', '2018-12-31'))
+post.period <- as.Date(c('2019-01-01', '2019-03-02'))
+impact <- CausalImpact(bookings_per_prop_by_months, pre.period, post.period)
+summary(impact)
+```
+
+```{r booking_amount_per_prop_by_months}
+booking_amount_per_prop_by_months <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(year_month = as.yearmon(date)) %>% 
+  group_by(date, online_visits) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(post = if_else(date >= as.Date('2019-01-01'), 1, 0)) %>% 
+  dplyr::select(date, online_visits, booking_amount_per_prop) %>% 
+  spread(online_visits, booking_amount_per_prop) %>% 
+  dplyr::select(date, Yes, No)
+
+pre.period <- as.Date(c('2018-11-02', '2018-12-31'))
+post.period <- as.Date(c('2019-01-01', '2019-03-02'))
+impact <- CausalImpact(booking_amount_per_prop_by_months, pre.period, post.period)
+summary(impact)
+```
+
+```{r booking_requests_per_prop_by_months}
+booking_requests_per_prop_by_months <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(year_month = as.yearmon(date)) %>% 
+  group_by(date, online_visits) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(post = if_else(date >= as.Date('2019-01-01'), 1, 0)) %>% 
+  dplyr::select(date, online_visits, booking_requests_per_prop) %>% 
+  spread(online_visits, booking_requests_per_prop) %>% 
+  dplyr::select(date, Yes, No)
+
+pre.period <- as.Date(c('2018-11-02', '2018-12-31'))
+post.period <- as.Date(c('2019-01-01', '2019-03-02'))
+impact <- CausalImpact(booking_requests_per_prop_by_months, pre.period, post.period)
+summary(impact)
+```
+
+```{r property_page_views_per_visit_per_prop_by_months}
+property_page_views_per_visit_per_prop_by_months <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(year_month = as.yearmon(date)) %>% 
+  group_by(date, online_visits) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(post = if_else(date >= as.Date('2019-01-01'), 1, 0)) %>% 
+  dplyr::select(date, online_visits, property_page_views_per_visit_per_prop) %>% 
+  spread(online_visits, property_page_views_per_visit_per_prop) %>% 
+  dplyr::select(date, Yes, No)
+
+pre.period <- as.Date(c('2018-11-02', '2018-12-31'))
+post.period <- as.Date(c('2019-01-01', '2019-03-02'))
+impact <- CausalImpact(property_page_views_per_visit_per_prop_by_months, pre.period, post.period)
+summary(impact)
+```
+
+```{r displays_in_searchpage_per_prop_by_months}
+displays_in_searchpage_per_prop_by_months <- metrics %>% 
+  left_join(property, by = 'property_id') %>% 
+  mutate(year_month = as.yearmon(date)) %>% 
+  group_by(date, online_visits) %>% 
+  summarize(bookings_per_prop = mean(bookings, na.rm = TRUE),
+            booking_amount_per_prop = mean(booking_amount, na.rm = TRUE),
+            booking_requests_per_prop = mean(booking_requests, na.rm = TRUE),
+            property_page_views_per_visit_per_prop = mean(property_page_views_visits, na.rm = TRUE),
+            displays_in_searchpage_per_prop = mean(number_of_times_the_property_got_displayed_in_search_page, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(post = if_else(date >= as.Date('2019-01-01'), 1, 0)) %>% 
+  dplyr::select(date, online_visits, displays_in_searchpage_per_prop) %>% 
+  spread(online_visits, displays_in_searchpage_per_prop) %>% 
+  dplyr::select(date, Yes, No)
+
+pre.period <- as.Date(c('2018-11-02', '2018-12-31'))
+post.period <- as.Date(c('2019-01-01', '2019-03-02'))
+impact <- CausalImpact(displays_in_searchpage_per_prop_by_months, pre.period, post.period)
+summary(impact)
+```
